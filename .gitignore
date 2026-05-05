@@ -1,0 +1,69 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.python-version
+
+# uv
+.uv-cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing & coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ML / project artifacts
+mlruns/
+mlartifacts/
+*.pkl
+*.joblib
+*.h5
+*.onnx
+
+# Data — never commit large data
+*.csv
+*.parquet
+*.feather
+!**/fixtures/*.csv
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Docker
+*.pid
+
+# LangGraph / LangChain
+.langgraph_api/
+
+# Claude Code local state
+.claude/
+!.claude/settings.json

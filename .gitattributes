@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Force LF for shell, dockerfiles, anything that runs in Linux
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+*.dockerfile text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+
+# Binary
+*.png        binary
+*.jpg        binary
+*.pkl        binary
+*.joblib     binary
