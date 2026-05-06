@@ -34,7 +34,7 @@ Seven docker-compose services: `postgres`, `redis`, `mlflow`, `model-service`, `
 
 ## Data flow
 
-**Prediction request.** Client → `model-service /predict` → Pydantic-validated input → loaded model in `app.state` → response written, `predictions_log` row appended. Latency target: <100ms.
+**Prediction request.** Client → `model-service /predict` → Pydantic-validated input (`platform/app/schemas/prediction.py`, `extra="forbid"` so `duration` is rejected at the edge) → `pdays==999` sentinel transformation via `apply_pdays_sentinel` → fitted pipeline in `app.state.model_bundle` → `predict_proba` dispatched on a worker thread → response written, `predictions_log` row appended. The model is loaded from MLflow once during the FastAPI lifespan (`models:/<name>@<alias>`); the threshold travels with it as a run param. `/healthz` reports liveness; `/readyz` reports model-readiness. Latency target: <100ms.
 
 **Drift event.** Background task on `model-service` recomputes drift over the last 1000 predictions every 60s. On severity change → POST `DriftEvent` to agent's `/webhooks/drift` (timeout=5s, tenacity retry x3). Agent writes the event to `drift_events`, creates an `investigation_id`, kicks off the LangGraph supervisor on a fresh thread. Supervisor runs triage → action → (if Production-touching) HIL pause → comms.
 
