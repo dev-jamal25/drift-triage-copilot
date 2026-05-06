@@ -1,0 +1,22 @@
+# .github/CODEOWNERS
+#
+# Default reviewers + path-based ownership.
+# Branch protection enforces "Require review from Code Owners" on main.
+
+# Default — anything not covered below requires both authors
+*                       @dev-jamal25 @HadiKanaan
+
+# Track ownership — primary reviewer per area
+/platform/              @dev-jamal25
+/agent/                 @HadiKanaan
+/worker/                @HadiKanaan
+/dashboard/             @dev-jamal25
+
+# Shared boundary — both must approve
+/shared/                @dev-jamal25 @HadiKanaan
+
+# Project-wide infra — both must approve
+/.github/               @dev-jamal25 @HadiKanaan
+/docker-compose.yml     @dev-jamal25 @HadiKanaan
+/CLAUDE.md              @dev-jamal25 @HadiKanaan
+/.mcp.json              @dev-jamal25 @HadiKanaan

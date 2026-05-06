@@ -7,7 +7,7 @@ alerts, decides what to do, dispatches slow consequences (replay, retrain,
 rollback) through a Redis queue, persists state across restarts, and pauses
 for human approval before any change to Production.
 
-**Authors:** [Name 1], [Name 2]
+**Authors:** Jamal Hamd, Hadi Kanaan
 **Tag:** `v0.1.0-week5`
 
 ## Architecture

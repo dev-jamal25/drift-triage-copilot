@@ -130,3 +130,31 @@ Append a one-paragraph entry to `DECISIONS.md`. The format is: the choice, alter
 ## When stuck
 - Reach for Context7 for library docs (LangGraph, MLflow, Pydantic v2) before guessing.
 - For runtime errors: bring traceback + what you tried + your hypothesis back to Claude AI for the architectural conversation.
+
+## Track ownership — DO NOT cross without explicit instruction
+
+This project is built by two engineers on separate tracks. Each Claude Code
+session must stay within its track unless the user explicitly says otherwise.
+
+**Platform track owns:**
+- `platform/` (everything)
+- Platform-specific schemas in `shared/contracts.py` (DriftEvent, DriftReport,
+  PromotionRequest, PromotionResult)
+
+**Agent track owns:**
+- `agent/` (everything)
+- `worker/` (everything)
+- `dashboard/` (everything)
+- Agent-specific schemas in `shared/contracts.py` (QueuedAction, ActionResult,
+  HilApproval)
+
+**Joint — modify ONLY with explicit user instruction:**
+- `shared/contracts.py` — schema changes here are breaking changes for the
+  other track and require both authors to approve
+- `docker-compose.yml`
+- `.github/`
+- `CLAUDE.md`, `.mcp.json`, `pyproject.toml` files at the root
+
+Before editing any file outside your track, STOP and ask the user:
+"This is in the other track's area. Do you want me to proceed, or should this
+go through a coordination PR?"
