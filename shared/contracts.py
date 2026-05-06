@@ -94,6 +94,7 @@ class QueuedAction(BaseModel):
 
     idempotency_key: str
     investigation_id: str
+    model_name: str
     action_type: ActionType
     target_version: str
     payload: dict = Field(default_factory=dict)
@@ -102,22 +103,9 @@ class QueuedAction(BaseModel):
     created_at: datetime
 
 
-class ActionResult(BaseModel):
-    """Worker writes this to actions_log on completion."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    idempotency_key: str
-    status: Literal["success", "failure", "dlq"]
-    completed_at: datetime
-    result_payload: dict = Field(default_factory=dict)
-    error_message: str | None = None
-
-
 # =============================================================================
 # Promotion (agent -> platform, after HIL approval)
 # =============================================================================
-
 
 PromotionStage = Literal["Staging", "Production", "Archived"]
 
@@ -162,6 +150,7 @@ class HilApproval(BaseModel):
 
     approval_id: str
     investigation_id: str
+    model_name: str
     proposed_action: ActionType
     target_version: str
     summary: str = Field(..., description="Comms-agent-written human summary.")
@@ -169,3 +158,7 @@ class HilApproval(BaseModel):
     created_at: datetime
     resolved_at: datetime | None = None
     resolved_by: str | None = None
+    superseded_by: str | None = Field(
+        default=None,
+        description="investigation_id of the newer investigation, if any.",
+    )
