@@ -42,7 +42,6 @@ htmlcov/
 .ruff_cache/
 
 # ML / project artifacts
-mlruns/
 mlartifacts/
 *.pkl
 *.joblib
@@ -67,3 +66,12 @@ mlartifacts/
 # Claude Code local state
 .claude/
 !.claude/settings.json
+
+# Platform generated data/artifacts
+platform/data/raw/*
+platform/data/processed/*
+platform/mlruns/
+
+# structured
+.structureignore
+structure.md
