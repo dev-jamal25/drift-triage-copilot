@@ -79,6 +79,19 @@ def validate_columns(df: pd.DataFrame) -> None:
         raise ValueError(f"Column mismatch. missing={sorted(missing)} extra={sorted(extra)}")
 
 
+def apply_pdays_sentinel(df: pd.DataFrame) -> pd.DataFrame:
+    """Encode the ``pdays == 999`` sentinel as two derived columns.
+
+    Pure on the input; safe to call from both training (``clean``) and the
+    inference path (``app.routers.predict``) so the same transformation runs
+    in both places.
+    """
+    out = df.copy()
+    out["was_previously_contacted"] = (out["pdays"] != PDAYS_SENTINEL).astype("int64")
+    out["pdays_clean"] = np.where(out["pdays"] == PDAYS_SENTINEL, 0, out["pdays"]).astype("int64")
+    return out.drop(columns=["pdays"])
+
+
 def clean(df: pd.DataFrame) -> pd.DataFrame:
     """Apply the platform's data-prep rules.
 
@@ -90,17 +103,10 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
         and ``pdays_clean``; drop original ``pdays``
     """
     out = df.copy()
-
     out = out.drop(columns=["duration"])
-
     out[TARGET_COLUMN] = out["y"].map({"yes": 1, "no": 0}).astype("int64")
     out = out.drop(columns=["y"])
-
-    out["was_previously_contacted"] = (out["pdays"] != PDAYS_SENTINEL).astype("int64")
-    out["pdays_clean"] = np.where(out["pdays"] == PDAYS_SENTINEL, 0, out["pdays"]).astype("int64")
-    out = out.drop(columns=["pdays"])
-
-    return out
+    return apply_pdays_sentinel(out)
 
 
 def split(
