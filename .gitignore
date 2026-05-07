@@ -67,3 +67,12 @@ mlartifacts/
 # Claude Code local state
 .claude/
 !.claude/settings.json
+
+# Platform generated data/artifacts
+platform/data/raw/*
+platform/data/processed/*
+platform/mlruns/
+
+# structured
+.structureignore
+structure.md
