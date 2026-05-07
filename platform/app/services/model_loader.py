@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import mlflow
 import structlog
+from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 from sklearn.pipeline import Pipeline
 from tenacity import (
@@ -33,7 +35,13 @@ _stdlog = logging.getLogger("app.services.model_loader")
 
 @dataclass(frozen=True)
 class ModelBundle:
-    """Everything the request path needs about the loaded model."""
+    """Everything the request path needs about the loaded model.
+
+    ``reference_stats`` is the JSON dict produced by
+    ``ml.drift_stats.compute_reference_stats`` and logged at registration
+    time. It's optional so we can still load older models registered before
+    Step 2 — the drift scheduler will simply skip those runs.
+    """
 
     pipeline: Pipeline
     threshold: float
@@ -43,6 +51,7 @@ class ModelBundle:
     alias: str
     run_id: str
     loaded_at: datetime
+    reference_stats: dict[str, Any] | None = None
 
 
 @retry(
@@ -73,6 +82,7 @@ def load_bundle(settings: Settings) -> ModelBundle:
             "a 'threshold' param — was it logged via ml/registry.py?"
         )
     threshold = float(run.data.params["threshold"])
+    reference_stats = _load_reference_stats(run.info.run_id)
 
     bundle = ModelBundle(
         pipeline=pipe,
@@ -83,6 +93,7 @@ def load_bundle(settings: Settings) -> ModelBundle:
         alias=settings.model_alias,
         run_id=mv.run_id,
         loaded_at=datetime.now(UTC),
+        reference_stats=reference_stats,
     )
     log.info(
         "model_load_ok",
@@ -90,5 +101,25 @@ def load_bundle(settings: Settings) -> ModelBundle:
         version=bundle.version,
         threshold=bundle.threshold,
         run_id=bundle.run_id,
+        reference_stats=bool(reference_stats),
     )
     return bundle
+
+
+def _load_reference_stats(run_id: str) -> dict[str, Any] | None:
+    """Best-effort fetch of ``reference_stats.json`` from the model's run.
+
+    Older runs (registered before Step 2) won't have the artifact. The drift
+    scheduler treats ``None`` as "no baseline available — skip drift" rather
+    than failing the whole service.
+    """
+    artifact_uri = f"runs:/{run_id}/reference_stats.json"
+    try:
+        return dict(mlflow.artifacts.load_dict(artifact_uri))
+    except (MlflowException, FileNotFoundError, OSError) as exc:
+        log.warning(
+            "reference_stats_missing",
+            run_id=run_id,
+            reason=str(exc),
+        )
+        return None

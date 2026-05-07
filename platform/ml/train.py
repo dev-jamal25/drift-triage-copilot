@@ -41,6 +41,7 @@ from ml.data import (
     split_xy,
     validate_columns,
 )
+from ml.drift_stats import compute_reference_stats
 from ml.evaluate import evaluate_at_threshold, tune_threshold
 from ml.features import build_preprocessor
 from ml.registry import (
@@ -199,6 +200,15 @@ def run_pipeline(
     test_proba = pipe.predict_proba(X_test)[:, 1]
     test_metrics = evaluate_at_threshold(y_test.to_numpy(), test_proba, threshold)
 
+    logger.info("computing reference stats for drift baseline")
+    train_proba = pipe.predict_proba(X_train)[:, 1]
+    reference_stats = compute_reference_stats(
+        X_train,
+        train_proba,
+        positive_rate=float(y_train.mean()),
+    )
+    (out_dir / "reference_stats.json").write_text(json.dumps(reference_stats, indent=2))
+
     joblib.dump(pipe, out_dir / "model.joblib")
     metrics_payload: dict[str, Any] = {
         "chosen_model": str(chosen),
@@ -241,6 +251,7 @@ def run_pipeline(
             tracking_uri=tracking_uri,
             experiment_name=experiment_name,
             stage=stage,
+            reference_stats=reference_stats,
         )
         loaded = load_model(registry.model_uri)
         fidelity = fidelity_check(pipe, loaded, X_val.head(200))

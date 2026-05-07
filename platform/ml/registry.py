@@ -171,8 +171,9 @@ def log_and_register(
     stage: str = "Staging",
     model_card_template: Path | None = None,
     extra_tags: dict[str, str] | None = None,
+    reference_stats: dict[str, Any] | None = None,
 ) -> LoggedRun:
-    """One-shot: log model + schema + card, register, set alias, return URIs.
+    """One-shot: log model + schema + card (+ reference stats), register, set alias.
 
     Returns a ``LoggedRun`` whose ``model_uri`` is the alias-qualified URI
     suitable for ``mlflow.sklearn.load_model``.
@@ -224,6 +225,8 @@ def log_and_register(
                 mlflow.log_metric(f"{split}_{metric_key}", float(metrics[metric_key]))
 
         mlflow.log_dict(schema, "schema.json")
+        if reference_stats is not None:
+            mlflow.log_dict(reference_stats, "reference_stats.json")
 
         mlflow.sklearn.log_model(
             sk_model=pipe,
