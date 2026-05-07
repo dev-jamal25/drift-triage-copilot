@@ -149,6 +149,133 @@ async def test_tick_tracks_previous_severity_across_ticks(
 
 
 @pytest.mark.asyncio
+async def test_tick_emits_webhook_on_first_non_green_tick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First tick produces 'red' → effective_previous=green → emit fires."""
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.recompute_drift",
+        AsyncMock(return_value=_report("red")),
+    )
+    fake_emit = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.services.drift_scheduler.emit_drift_event", fake_emit)
+
+    sch = DriftScheduler(
+        settings=_settings(agent_webhook_url="http://agent/webhooks/drift"),
+        session_factory=_factory_returning(AsyncMock()),
+        get_bundle=lambda: _bundle(stats={"numeric": {}, "categorical": {}, "output": {}}),
+        http_client=AsyncMock(),
+    )
+    await sch.tick()
+
+    fake_emit.assert_awaited_once()
+    sent_event = fake_emit.await_args.args[0]
+    assert sent_event.severity == "red"
+    assert sent_event.previous_severity == "green"
+
+
+@pytest.mark.asyncio
+async def test_tick_does_not_emit_when_severity_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two consecutive green ticks → no webhook (no transition)."""
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.recompute_drift",
+        AsyncMock(return_value=_report("green")),
+    )
+    fake_emit = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.services.drift_scheduler.emit_drift_event", fake_emit)
+
+    sch = DriftScheduler(
+        settings=_settings(agent_webhook_url="http://agent/webhooks/drift"),
+        session_factory=_factory_returning(AsyncMock()),
+        get_bundle=lambda: _bundle(stats={"numeric": {}, "categorical": {}, "output": {}}),
+        http_client=AsyncMock(),
+    )
+    await sch.tick()
+    await sch.tick()
+
+    fake_emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tick_emits_on_each_severity_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """green → yellow → yellow → red emits twice (transitions, not steady states)."""
+    severities = iter([_report("green"), _report("yellow"), _report("yellow"), _report("red")])
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.recompute_drift",
+        AsyncMock(side_effect=lambda *a, **kw: next(severities)),
+    )
+    fake_emit = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.services.drift_scheduler.emit_drift_event", fake_emit)
+
+    sch = DriftScheduler(
+        settings=_settings(agent_webhook_url="http://agent/webhooks/drift"),
+        session_factory=_factory_returning(AsyncMock()),
+        get_bundle=lambda: _bundle(stats={"numeric": {}, "categorical": {}, "output": {}}),
+        http_client=AsyncMock(),
+    )
+    for _ in range(4):
+        await sch.tick()
+
+    # Transitions: green→green (no), green→yellow (yes), yellow→yellow (no), yellow→red (yes)
+    assert fake_emit.await_count == 2
+    transitions = [
+        (call.args[0].previous_severity, call.args[0].severity)
+        for call in fake_emit.await_args_list
+    ]
+    assert transitions == [("green", "yellow"), ("yellow", "red")]
+
+
+@pytest.mark.asyncio
+async def test_tick_skips_webhook_when_no_url_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """agent_webhook_url=None → no emit attempt even on a clear severity change."""
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.recompute_drift",
+        AsyncMock(return_value=_report("red")),
+    )
+    fake_emit = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.services.drift_scheduler.emit_drift_event", fake_emit)
+
+    sch = DriftScheduler(
+        settings=_settings(agent_webhook_url=None),  # no URL
+        session_factory=_factory_returning(AsyncMock()),
+        get_bundle=lambda: _bundle(stats={"numeric": {}, "categorical": {}, "output": {}}),
+        http_client=AsyncMock(),
+    )
+    await sch.tick()
+    fake_emit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tick_continues_when_webhook_returns_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed webhook (returns False) must not break the tick — latest_report still cached."""
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.recompute_drift",
+        AsyncMock(return_value=_report("red")),
+    )
+    monkeypatch.setattr(
+        "app.services.drift_scheduler.emit_drift_event",
+        AsyncMock(return_value=False),
+    )
+    sch = DriftScheduler(
+        settings=_settings(agent_webhook_url="http://agent/webhooks/drift"),
+        session_factory=_factory_returning(AsyncMock()),
+        get_bundle=lambda: _bundle(stats={"numeric": {}, "categorical": {}, "output": {}}),
+        http_client=AsyncMock(),
+    )
+    await sch.tick()
+    assert sch.latest_report is not None
+    assert sch.latest_report.overall_severity == "red"
+
+
+@pytest.mark.asyncio
 async def test_start_then_stop_is_clean(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "app.services.drift_scheduler.recompute_drift",

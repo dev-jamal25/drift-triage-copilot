@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 import structlog
 from fastapi import FastAPI, Request
 
@@ -41,10 +42,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.info("model_load_skipped", reason="load_model_on_startup=false")
 
+    http_client = httpx.AsyncClient(timeout=settings.agent_webhook_timeout_s)
+    app.state.http_client = http_client
+
     scheduler = DriftScheduler(
         settings=settings,
         session_factory=session_factory,
         get_bundle=lambda: getattr(app.state, "model_bundle", None),
+        http_client=http_client,
     )
     scheduler.start()
     app.state.drift_scheduler = scheduler
@@ -53,6 +58,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await scheduler.stop()
+        await http_client.aclose()
         await close_engine(engine)
         log.info("shutdown")
 

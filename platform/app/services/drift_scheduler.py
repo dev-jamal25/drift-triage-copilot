@@ -10,22 +10,26 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+import httpx
 import structlog
-from shared.contracts import DriftReport, Severity
+from shared.contracts import DriftEvent, DriftReport, Severity
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config import Settings
 from app.services.drift_service import recompute_drift
 from app.services.model_loader import ModelBundle
+from app.services.webhook import emit_drift_event
 
 log = structlog.get_logger(__name__)
 
 
 class DriftScheduler:
-    """Owns the recompute loop and the latest-report cache."""
+    """Owns the recompute loop, the latest-report cache, and severity-change
+    webhook emission."""
 
     def __init__(
         self,
@@ -33,10 +37,12 @@ class DriftScheduler:
         settings: Settings,
         session_factory: async_sessionmaker,
         get_bundle: Callable[[], ModelBundle | None],
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
         self._get_bundle = get_bundle
+        self._http_client = http_client
         self._task: asyncio.Task | None = None
         self.latest_report: DriftReport | None = None
         self.previous_severity: Severity | None = None
@@ -80,11 +86,53 @@ class DriftScheduler:
         async with self._session_factory() as session:
             report = await recompute_drift(session, bundle, self._settings.drift_window_size)
 
-        self.previous_severity = (
-            self.latest_report.overall_severity if self.latest_report is not None else None
-        )
+        # Capture pre-update state for transition detection.
+        old_latest = self.latest_report
+
+        self.previous_severity = old_latest.overall_severity if old_latest is not None else None
         self.latest_report = report
         self.last_refreshed_at = datetime.now(UTC)
+
+        await self._maybe_emit_webhook(bundle, old_latest, report)
+
+    async def _maybe_emit_webhook(
+        self,
+        bundle: ModelBundle,
+        old_latest: DriftReport | None,
+        report: DriftReport,
+    ) -> None:
+        """If severity changed, fire ``DriftEvent`` to the agent webhook.
+
+        First-tick semantics: a service that comes up in non-green should
+        still alert the agent. We treat "no prior tick" as ``green`` so the
+        first transition green→{yellow,red} is a real change.
+        """
+        if self._http_client is None or self._settings.agent_webhook_url is None:
+            return
+
+        effective_previous: Severity = (
+            old_latest.overall_severity if old_latest is not None else "green"
+        )
+        if report.overall_severity == effective_previous:
+            return
+
+        assert self.last_refreshed_at is not None  # we just set it
+        event = DriftEvent(
+            event_id=str(uuid.uuid4()),
+            timestamp=self.last_refreshed_at,
+            model_name=bundle.model_name,
+            model_version=bundle.version,
+            severity=report.overall_severity,
+            previous_severity=effective_previous,
+            drift_report=report,
+        )
+        log.info(
+            "drift_severity_change",
+            previous=effective_previous,
+            current=report.overall_severity,
+            event_id=event.event_id,
+        )
+        await emit_drift_event(event, self._settings, self._http_client)
 
     async def _loop(self) -> None:
         """Run ``tick`` forever. Catches anything but ``CancelledError`` so a

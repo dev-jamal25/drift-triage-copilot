@@ -28,6 +28,11 @@ class Settings(BaseSettings):
         # ``model_*`` field names collide with Pydantic's reserved namespace;
         # disable the protection so we can keep familiar names.
         protected_namespaces=(),
+        # Fields with ``validation_alias=AliasChoices(...)`` (database_url,
+        # agent_webhook_url) need this to also accept the field name as a
+        # kwarg — otherwise ``Settings(agent_webhook_url=...)`` silently falls
+        # back to the default. Tests rely on the kwarg form.
+        populate_by_name=True,
     )
 
     mlflow_tracking_uri: str = "file:./mlruns"
@@ -47,3 +52,13 @@ class Settings(BaseSettings):
     # Drift scheduler — see DECISIONS.md "Rolling window" for the 60s/1000-row choice.
     drift_recompute_interval_s: float = 60.0
     drift_window_size: int = 1000
+
+    # Drift webhook — emitted on severity change. ``agent_webhook_url`` accepts
+    # the project-wide ``AGENT_WEBHOOK_URL`` (compose) or the prefix-consistent
+    # ``PLATFORM_AGENT_WEBHOOK_URL``. ``None`` disables emission.
+    agent_webhook_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_WEBHOOK_URL", "PLATFORM_AGENT_WEBHOOK_URL"),
+    )
+    agent_webhook_timeout_s: float = 5.0
+    agent_webhook_max_retries: int = 3
