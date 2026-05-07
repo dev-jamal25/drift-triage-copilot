@@ -37,6 +37,12 @@ platform/
 # Install (Python 3.12+, uv)
 uv sync --all-extras
 
+# Bring up the project's Postgres (required — no SQLite fallback)
+docker compose up -d postgres
+
+# Apply migrations (run once after pulling new revisions)
+uv run alembic upgrade head
+
 # Train + register the staging model (writes data/processed/* + mlruns/)
 uv run python -m ml.train --data data/raw/bank-additional-full.csv --out data/processed/
 
@@ -60,6 +66,43 @@ uv run pytest -q tests/test_predict.py            # one file
 uv run pytest -q -k "test_threshold_rule"          # by name
 ```
 
+## Database & migrations
+
+Postgres-only — there's no SQLite fallback. Local dev requires the
+`postgres` service from [docker-compose.yml](../docker-compose.yml)
+running on `localhost:5432`. The compose service reads credentials from
+[.env](../.env.example).
+
+Schema is managed with Alembic. Migrations are **explicit** — never run
+from the FastAPI lifespan.
+
+```bash
+# Bring up Postgres
+docker compose up -d postgres
+
+# Apply all migrations
+uv run alembic upgrade head
+
+# Create a new migration (manual stub; we don't autogenerate yet)
+uv run alembic revision -m "<short slug>"
+
+# Roll back one revision
+uv run alembic downgrade -1
+```
+
+Tables in scope today:
+
+| Table             | Purpose                                                  |
+| ----------------- | -------------------------------------------------------- |
+| `predictions_log` | One row per `POST /predict` (features, score, label, …)  |
+
+If you `uvicorn app.main:app` against an empty database, the first
+`/predict` will fail loudly — that's by design. Run `alembic upgrade head`.
+
+The platform's Alembic uses `version_table="platform_alembic_version"`
+(see [alembic/env.py](alembic/env.py)) because MLflow shares this Postgres
+instance and owns the default `alembic_version` table.
+
 ## Configuration
 
 All runtime config flows through `Settings` in
@@ -74,6 +117,7 @@ else (CLAUDE.md hard rule).
 | `PLATFORM_MODEL_ALIAS`           | `staging`                   | Alias resolved at startup (`models:/<name>@<alias>`)             |
 | `PLATFORM_LOAD_MODEL_ON_STARTUP` | `true`                      | Set to `false` for tests/CI to skip MLflow                       |
 | `PLATFORM_LOG_LEVEL`             | `INFO`                      | structlog level                                                  |
+| `DATABASE_URL` / `PLATFORM_DATABASE_URL` | `postgresql+asyncpg://drift_user:change_me_locally@localhost:5432/drift_triage` | Async Postgres URL. `DATABASE_URL` is the project-wide convention used by docker-compose. |
 
 ## Dataset — UCI Bank Marketing
 

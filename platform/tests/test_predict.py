@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import mlflow
 import numpy as np
@@ -23,7 +24,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
 from app.core.config import Settings
-from app.dependencies import get_model_bundle
+from app.dependencies import get_model_bundle, get_session
 from app.main import app
 from app.services.model_loader import ModelBundle, load_bundle
 from ml.data import clean
@@ -115,17 +116,34 @@ def fitted_bundle() -> ModelBundle:
 
 
 @pytest.fixture
-def client(fitted_bundle: ModelBundle) -> Iterator[TestClient]:
-    """TestClient with the model bundle dependency overridden — no lifespan needed."""
+def mock_session() -> AsyncMock:
+    """AsyncMock standing in for an AsyncSession.
+
+    ``add`` is sync in real SQLAlchemy, so we override the AsyncMock default
+    (which would otherwise produce un-awaited coroutine warnings).
+    """
+    session = AsyncMock()
+    session.add = MagicMock()
+    return session
+
+
+@pytest.fixture
+def client(fitted_bundle: ModelBundle, mock_session: AsyncMock) -> Iterator[TestClient]:
+    """TestClient with model + session dependencies overridden — no lifespan needed."""
     app.dependency_overrides[get_model_bundle] = lambda: fitted_bundle
+
+    async def _override_session():
+        yield mock_session
+
+    app.dependency_overrides[get_session] = _override_session
     try:
-        # No `with` -> lifespan does not run, so MLflow is never contacted.
+        # No `with` -> lifespan does not run, so MLflow + DB engine are never opened.
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
 
 
-def test_predict_happy_path(client: TestClient) -> None:
+def test_predict_happy_path(client: TestClient, mock_session: AsyncMock) -> None:
     resp = client.post("/predict", json=_canonical_payload())
     assert resp.status_code == 200
     body = resp.json()
@@ -139,6 +157,10 @@ def test_predict_happy_path(client: TestClient) -> None:
         assert body["label"] == 1
     else:
         assert body["label"] == 0
+    # The route persisted one row and committed exactly once
+    mock_session.add.assert_called_once()
+    mock_session.flush.assert_awaited_once()
+    mock_session.commit.assert_awaited_once()
 
 
 def test_predict_rejects_extra_field(client: TestClient) -> None:

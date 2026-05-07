@@ -10,6 +10,7 @@ import structlog
 from fastapi import FastAPI, Request
 
 from app.core.logging import configure_logging
+from app.db.engine import close_engine, open_engine
 from app.dependencies import get_settings
 from app.routers import predict as predict_router
 from app.services.model_loader import load_bundle
@@ -17,7 +18,7 @@ from app.services.model_loader import load_bundle
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Load the registered model from MLflow once at startup."""
+    """Open the DB engine and load the registered model once at startup."""
     settings = get_settings()
     configure_logging(settings.log_level)
     log = structlog.get_logger("app.startup")
@@ -28,6 +29,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         model_alias=settings.model_alias,
     )
 
+    engine, session_factory = open_engine(settings.database_url)
+    app.state.engine = engine
+    app.state.session_factory = session_factory
+
     if settings.load_model_on_startup:
         bundle = await asyncio.to_thread(load_bundle, settings)
         app.state.model_bundle = bundle
@@ -37,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await close_engine(engine)
         log.info("shutdown")
 
 
