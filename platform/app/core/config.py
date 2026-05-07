@@ -43,3 +43,7 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://drift_user:change_me_locally@localhost:5432/drift_triage",
         validation_alias=AliasChoices("DATABASE_URL", "PLATFORM_DATABASE_URL"),
     )
+
+    # Drift scheduler — see DECISIONS.md "Rolling window" for the 60s/1000-row choice.
+    drift_recompute_interval_s: float = 60.0
+    drift_window_size: int = 1000

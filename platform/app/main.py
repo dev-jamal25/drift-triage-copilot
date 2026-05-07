@@ -12,13 +12,15 @@ from fastapi import FastAPI, Request
 from app.core.logging import configure_logging
 from app.db.engine import close_engine, open_engine
 from app.dependencies import get_settings
+from app.routers import drift as drift_router
 from app.routers import predict as predict_router
+from app.services.drift_scheduler import DriftScheduler
 from app.services.model_loader import load_bundle
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Open the DB engine and load the registered model once at startup."""
+    """Open the DB engine, load the model, and start the drift scheduler."""
     settings = get_settings()
     configure_logging(settings.log_level)
     log = structlog.get_logger("app.startup")
@@ -39,9 +41,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.info("model_load_skipped", reason="load_model_on_startup=false")
 
+    scheduler = DriftScheduler(
+        settings=settings,
+        session_factory=session_factory,
+        get_bundle=lambda: getattr(app.state, "model_bundle", None),
+    )
+    scheduler.start()
+    app.state.drift_scheduler = scheduler
+
     try:
         yield
     finally:
+        await scheduler.stop()
         await close_engine(engine)
         log.info("shutdown")
 
@@ -51,6 +62,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(predict_router.router)
+app.include_router(drift_router.router)
 
 
 @app.get("/healthz")

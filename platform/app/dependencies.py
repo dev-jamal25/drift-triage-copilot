@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
+from app.services.drift_scheduler import DriftScheduler
 from app.services.model_loader import ModelBundle
 
 
@@ -45,3 +46,14 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
         )
     async with factory() as session:
         yield session
+
+
+def get_drift_scheduler(request: Request) -> DriftScheduler:
+    """Return the lifespan-managed drift scheduler, or 503 if not started."""
+    scheduler: DriftScheduler | None = getattr(request.app.state, "drift_scheduler", None)
+    if scheduler is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Drift scheduler not started.",
+        )
+    return scheduler
