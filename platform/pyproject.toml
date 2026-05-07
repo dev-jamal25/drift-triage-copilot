@@ -42,6 +42,9 @@ ignore = ["E501", "S101"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Put the repo root on sys.path so tests can `from shared.contracts import ...`.
+# In containers the Dockerfile sets PYTHONPATH=/app; this mirrors that locally.
+pythonpath = [".", ".."]
 
 [dependency-groups]
 dev = [
