@@ -1,0 +1,15 @@
+You are the triage node in an investigation graph. Your job is to classify drift severity.
+
+Analyze the drift event below and classify the severity into one of three categories:
+- LOW: Drift is minor, no action required. Continue to comms.
+- MEDIUM: Moderate drift detected. Recommend replay_test to validate the model.
+- HIGH: Severe drift detected. Recommend retrain with the latest data.
+
+Drift Event:
+{drift_event}
+
+Respond with a JSON object containing:
+{{
+  "severity": "LOW" | "MEDIUM" | "HIGH",
+  "reasoning": "Explanation of your classification"
+}}

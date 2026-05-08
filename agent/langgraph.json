@@ -1,0 +1,11 @@
+{
+  "$schema": "https://langgra.ph/schema.json",
+  "source": {
+    "kind": "uv",
+    "root": "."
+  },
+  "graphs": {
+    "drift_triage_agent": "./app/studio.py:graph"
+  },
+  "env": "../.env"
+}

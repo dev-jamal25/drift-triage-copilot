@@ -85,9 +85,9 @@ class QueuedAction(BaseModel):
     """
     Action enqueued by the agent for the worker to execute.
 
-    `idempotency_key` is constructed as:
-        f"{investigation_id}:{action_type}:{target_version}"
-    so a retry of the same action does not produce duplicate side effects.
+    `idempotency_key` is the SHA256 hash of the canonical format:
+        SHA256(f"{investigation_id}:{action_type}:{target_version}").hexdigest()
+    This ensures idempotent retries — the same action never produces duplicate side effects.
     """
 
     model_config = ConfigDict(extra="forbid")
