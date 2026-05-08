@@ -1,12 +1,15 @@
 """Investigations router: GET endpoints for investigations."""
 
-import structlog
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from typing import Annotated
 
+import structlog
 from agent.app.database import get_session
-from agent.app.models import Investigation, HilApproval
+from agent.app.models import HilApproval, Investigation
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 log = structlog.get_logger()
 
@@ -15,7 +18,7 @@ router = APIRouter()
 
 @router.get("/investigations")
 async def list_investigations(
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> dict[str, list]:
     """
     Get all open and resolved investigations.
@@ -59,7 +62,7 @@ async def list_investigations(
 @router.get("/investigations/{investigation_id}")
 async def get_investigation(
     investigation_id: str,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> dict:
     """Get a specific investigation with details."""
     log.info("investigations.get", investigation_id=investigation_id)
@@ -75,9 +78,7 @@ async def get_investigation(
         "severity": investigation.severity,
         "status": investigation.status,
         "created_at": investigation.created_at.isoformat(),
-        "resolved_at": investigation.resolved_at.isoformat()
-        if investigation.resolved_at
-        else None,
+        "resolved_at": investigation.resolved_at.isoformat() if investigation.resolved_at else None,
     }
 
     # Fetch associated approval if any

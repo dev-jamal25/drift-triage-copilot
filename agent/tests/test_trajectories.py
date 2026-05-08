@@ -5,17 +5,22 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.language_models.fake_chat_models import (
+    GenericFakeChatModel,
+)
 from langchain_core.messages import AIMessage
 from shared.contracts import DriftEvent, DriftReport, FeatureDrift
+
+# Fixed timestamp for deterministic testing
+FIXED_TIMESTAMP = datetime.fromisoformat("2026-05-08T12:00:00+00:00")
 
 
 @pytest.fixture
 def high_severity_drift_event():
     """Create a HIGH severity drift event for testing."""
     drift_report = DriftReport(
-        window_start=datetime.utcnow(),
-        window_end=datetime.utcnow(),
+        window_start=FIXED_TIMESTAMP,
+        window_end=FIXED_TIMESTAMP,
         sample_size=1000,
         overall_severity="red",
         feature_drifts=[
@@ -39,7 +44,7 @@ def high_severity_drift_event():
 
     return DriftEvent(
         event_id="test-event-001",
-        timestamp=datetime.utcnow(),
+        timestamp=FIXED_TIMESTAMP,
         model_name="credit_risk_model",
         model_version="v2.1.0",
         severity="red",

@@ -2,16 +2,18 @@
 
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from agent.app.database import get_session
+from agent.app.graph import create_graph
+from agent.app.models import Investigation
+from agent.app.queue import get_queue_client
+from fastapi import APIRouter, Depends, HTTPException
+from shared.contracts import DriftEvent, QueuedAction
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent.app.database import get_session
-from agent.app.models import Investigation
-from agent.app.graph import create_graph
-from agent.app.queue import get_queue_client
-from shared.contracts import DriftEvent, QueuedAction
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 log = structlog.get_logger()
 
@@ -21,7 +23,7 @@ router = APIRouter()
 @router.post("/webhooks/drift", status_code=202)
 async def receive_drift_event(
     event: DriftEvent,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> dict[str, str]:
     """
     Receive drift event webhook from platform.
@@ -51,7 +53,7 @@ async def receive_drift_event(
     except Exception as e:
         log.error("webhook.drift.db_error", investigation_id=investigation_id, error=str(e))
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create investigation")
+        raise HTTPException(status_code=500, detail="Failed to create investigation") from e
 
     # Initialize graph and run investigation
     graph = create_graph()
@@ -98,13 +100,11 @@ async def receive_drift_event(
             )
 
     except Exception as e:
-        log.error(
-            "webhook.drift.graph_error", investigation_id=investigation_id, error=str(e)
-        )
+        log.error("webhook.drift.graph_error", investigation_id=investigation_id, error=str(e))
         investigation.status = "failed"
         session.add(investigation)
         await session.commit()
-        raise HTTPException(status_code=500, detail="Investigation failed")
+        raise HTTPException(status_code=500, detail="Investigation failed") from e
 
     log.info(
         "webhook.drift.investigation_created",

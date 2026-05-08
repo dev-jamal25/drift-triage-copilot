@@ -1,12 +1,9 @@
 """Action node: construct and enqueue QueuedAction for MEDIUM/HIGH severity."""
 
 import hashlib
-import json
-from datetime import datetime
 from typing import Any
 
 import structlog
-
 from shared.contracts import ActionType
 
 log = structlog.get_logger()
@@ -36,7 +33,6 @@ def action_node(state: dict[str, Any]) -> dict[str, Any]:
     investigation_id = state.get("investigation_id")
     model_name = state.get("model_name")
     model_version = state.get("model_version")
-    drift_event_dict = state.get("drift_event", {})
 
     # Determine recommended action based on severity
     action_type: ActionType = "retrain" if severity == "HIGH" else "replay_test"

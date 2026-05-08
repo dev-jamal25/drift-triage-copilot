@@ -1,11 +1,14 @@
 """Approvals router: POST /approve/{investigation_id}."""
 
+from typing import Annotated
+
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from agent.app.database import get_session
+from agent.app.models import HilApproval
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agent.app.database import get_session
-from agent.app.models import HilApproval, Investigation
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 log = structlog.get_logger()
 
@@ -15,7 +18,7 @@ router = APIRouter()
 @router.post("/approve/{investigation_id}", status_code=200)
 async def approve_investigation(
     investigation_id: str,
-    session: AsyncSession = Depends(get_session),
+    session: SessionDep,
 ) -> dict[str, str]:
     """
     Approve a pending HIL investigation and resume LangGraph graph.
@@ -66,7 +69,7 @@ async def approve_investigation(
     except Exception as e:
         log.error("approval.commit_error", investigation_id=investigation_id, error=str(e))
         await session.rollback()
-        raise HTTPException(status_code=500, detail="Failed to approve investigation")
+        raise HTTPException(status_code=500, detail="Failed to approve investigation") from e
 
     # TODO: Resume LangGraph from checkpoint using investigation_id
 

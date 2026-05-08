@@ -1,14 +1,12 @@
 """Agent service entry point."""
 
-import os
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI
-
-from agent.app.database import init_db, close_db
+from agent.app.database import close_db, init_db
 from agent.app.queue import get_queue_client
-from agent.app.routers import webhooks, approvals, investigations
+from agent.app.routers import approvals, investigations, webhooks
+from fastapi import FastAPI
 
 log = structlog.get_logger()
 

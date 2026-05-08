@@ -1,6 +1,5 @@
 """Comms node: write human-readable summary for HIL inbox."""
 
-import json
 import os
 from typing import Any
 
@@ -13,7 +12,7 @@ COMMS_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "co
 
 def load_comms_prompt() -> str:
     """Load the comms prompt from file."""
-    with open(COMMS_PROMPT_PATH, "r") as f:
+    with open(COMMS_PROMPT_PATH) as f:
         return f.read()
 
 

@@ -1,7 +1,5 @@
 """Supervisor node: entry point, routing, and stale URI check."""
 
-import json
-import os
 from typing import Any
 
 import structlog

@@ -1,13 +1,11 @@
 """Postgres database session setup and initialization."""
 
 import os
-from contextlib import asynccontextmanager
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
-
 from agent.app.models import Base
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 log = structlog.get_logger()
 

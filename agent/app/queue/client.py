@@ -1,12 +1,9 @@
 """Redis queue abstraction for enqueuing actions."""
 
-import json
 import os
-from datetime import datetime, timedelta
 
 import redis.asyncio as redis
 import structlog
-
 from shared.contracts import QueuedAction
 
 log = structlog.get_logger()

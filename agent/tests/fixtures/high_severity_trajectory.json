@@ -6,8 +6,10 @@
   "severity": "HIGH",
   "previous_severity": "green",
   "drift_report": {
-    "overall_severity": "red",
+    "window_start": "2026-05-08T12:00:00Z",
+    "window_end": "2026-05-08T12:00:00Z",
     "sample_size": 1000,
+    "overall_severity": "red",
     "feature_drifts": [
       {
         "feature_name": "transaction_amount",

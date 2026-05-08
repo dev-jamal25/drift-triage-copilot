@@ -1,6 +1,5 @@
 """Triage node: classify drift severity from DriftEvent."""
 
-import json
 import os
 from typing import Any
 
@@ -8,14 +7,12 @@ import structlog
 
 log = structlog.get_logger()
 
-TRIAGE_PROMPT_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "prompts", "triage.txt"
-)
+TRIAGE_PROMPT_PATH = os.path.join(os.path.dirname(__file__), "..", "prompts", "triage.txt")
 
 
 def load_triage_prompt() -> str:
     """Load the triage prompt from file."""
-    with open(TRIAGE_PROMPT_PATH, "r") as f:
+    with open(TRIAGE_PROMPT_PATH) as f:
         return f.read()
 
 
