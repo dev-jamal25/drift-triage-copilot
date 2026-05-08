@@ -1,0 +1,41 @@
+{
+  "investigation_id": "test-investigation-high-001",
+  "event_id": "test-event-001",
+  "model_name": "credit_risk_model",
+  "model_version": "v2.1.0",
+  "severity": "HIGH",
+  "previous_severity": "green",
+  "drift_report": {
+    "overall_severity": "red",
+    "sample_size": 1000,
+    "feature_drifts": [
+      {
+        "feature_name": "transaction_amount",
+        "feature_type": "numeric",
+        "metric": "psi",
+        "value": 0.45,
+        "severity": "red"
+      },
+      {
+        "feature_name": "customer_segment",
+        "feature_type": "categorical",
+        "metric": "chi2",
+        "value": 125.3,
+        "severity": "red"
+      }
+    ],
+    "output_drift_psi": 0.38
+  },
+  "triage_output": {
+    "severity": "HIGH",
+    "reasoning": "Multiple features show severe drift. Transaction amount PSI=0.45, customer segment chi2=125.3. Immediate action required."
+  },
+  "action_type": "retrain",
+  "idempotency_key": "sha256(investigation_id:credit_risk_model:v2.1.0:retrain)",
+  "hil_approval": {
+    "status": "pending",
+    "recommended_action": "retrain",
+    "summary": "Recommended retrain for HIGH severity drift in credit_risk_model"
+  },
+  "comms_output": "The credit_risk_model (v2.1.0) shows severe drift in multiple critical features. We recommend immediate retraining with recent data to restore prediction accuracy. Customer behavior has shifted significantly, and the current model no longer captures these patterns. Retraining is essential to prevent performance degradation in production."
+}
