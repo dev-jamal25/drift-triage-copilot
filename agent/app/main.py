@@ -3,8 +3,9 @@
 from contextlib import asynccontextmanager
 
 import structlog
+from agent.app.core.config import AgentSettings, redact_url
 from agent.app.database import close_db, init_db
-from agent.app.queue import get_queue_client
+from agent.app.queue.client import QueueClient
 from agent.app.routers import approvals, investigations, webhooks
 from fastapi import FastAPI
 
@@ -16,12 +17,25 @@ async def lifespan(app: FastAPI):
     """FastAPI lifespan: startup and shutdown."""
     log.info("agent.startup")
 
+    # Load settings from environment and .env
+    settings = AgentSettings()
+    log.info(
+        "agent.settings.loaded",
+        database_url=redact_url(settings.database_url),
+        redis_url=redact_url(settings.redis_url),
+        log_level=settings.log_level,
+    )
+
     # Initialize database
-    await init_db()
+    await init_db(database_url=settings.database_url)
 
     # Connect to Redis
-    queue_client = get_queue_client()
+    queue_client = QueueClient(redis_url=settings.redis_url)
     await queue_client.connect()
+
+    # Store in app state for dependency injection if needed
+    app.state.settings = settings
+    app.state.queue_client = queue_client
 
     yield
 

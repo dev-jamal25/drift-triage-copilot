@@ -19,7 +19,7 @@ class HilApproval(Base):
     recommended_action = Column(String, nullable=False)
     summary = Column(String, nullable=False)
     status = Column(String, default="pending", nullable=False)  # pending/approved/rejected/stale
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     superseded_by = Column(String, nullable=True)  # investigation_id of newer investigation
 
 
@@ -34,5 +34,5 @@ class Investigation(Base):
     severity = Column(String, nullable=False)  # green/yellow/red or LOW/MEDIUM/HIGH
     status = Column(String, default="open", nullable=False)  # open/resolved/stale
     thread_id = Column(String, nullable=False)  # LangGraph thread ID for resumption
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)

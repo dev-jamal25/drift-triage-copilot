@@ -1,9 +1,9 @@
 """Triage node: classify drift severity from DriftEvent."""
 
 import os
-from typing import Any
 
 import structlog
+from agent.app.schemas.state import AgentState
 
 log = structlog.get_logger()
 
@@ -16,7 +16,7 @@ def load_triage_prompt() -> str:
         return f.read()
 
 
-def triage_node(state: dict[str, Any]) -> dict[str, Any]:
+def triage_node(state: AgentState) -> dict:
     """
     Triage node: classify drift severity from DriftEvent into LOW / MEDIUM / HIGH.
 

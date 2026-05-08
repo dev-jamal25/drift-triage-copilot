@@ -1,8 +1,7 @@
 """Postgres database session setup and initialization."""
 
-import os
-
 import structlog
+from agent.app.core.config import redact_url
 from agent.app.models import Base
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -10,29 +9,23 @@ from sqlalchemy.pool import NullPool
 log = structlog.get_logger()
 
 
-def _get_postgres_dsn() -> str:
-    """Construct the Postgres connection string from environment."""
-    dsn = os.getenv(
-        "POSTGRES_DSN",
-        "postgresql+asyncpg://drift_user:drift_pass@postgres:5432/drift_triage",
-    )
-    return dsn
-
-
 # Create async engine with connection pooling disabled for Flask-like usage
 _engine = None
 _session_maker = None
 
 
-async def init_db() -> None:
-    """Initialize the database engine and session maker."""
+async def init_db(database_url: str) -> None:
+    """Initialize the database engine and session maker.
+
+    Args:
+        database_url: PostgreSQL async connection string.
+    """
     global _engine, _session_maker
 
-    dsn = _get_postgres_dsn()
-    log.info("database.init", dsn=dsn)
+    log.info("database.init", dsn=redact_url(database_url))
 
     _engine = create_async_engine(
-        dsn,
+        database_url,
         echo=False,
         poolclass=NullPool,  # Disable pooling for simplicity; we'll use a single session per request
     )

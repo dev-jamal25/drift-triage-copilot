@@ -161,3 +161,45 @@ async def test_get_status_returns_current_status(jobs_repo, mock_session_factory
 
     assert status == "succeeded"
     mock_session.execute.assert_called_once()
+
+
+def test_worker_action_jobs_datetime_columns_are_tz_aware():
+    """All datetime columns on WorkerActionJob must be TIMESTAMP WITH TIME ZONE."""
+    table = WorkerActionJob.__table__
+    for col_name in ("created_at", "updated_at", "started_at", "finished_at"):
+        col_type = table.c[col_name].type
+        assert (
+            getattr(col_type, "timezone", False) is True
+        ), f"{col_name} must be DateTime(timezone=True)"
+
+
+def test_payload_json_serialization():
+    """Test that QueuedAction payload is JSON-serializable when using mode='json'."""
+    import json
+
+    action = QueuedAction(
+        idempotency_key="test-inv-123:replay_test:v3",
+        investigation_id="test-inv-123",
+        model_name="bank-marketing-classifier",
+        action_type="replay_test",
+        target_version="v3",
+        payload={},
+        attempt=0,
+        max_attempts=3,
+        created_at=datetime.now(UTC),
+    )
+
+    # Verify that model_dump(mode="json") produces JSON-serializable output
+    payload_json = action.model_dump(mode="json")
+
+    # Should be able to serialize to JSON and back without errors
+    json_str = json.dumps(payload_json)
+    assert isinstance(json_str, str)
+
+    # Verify that created_at is a string, not a datetime object
+    assert isinstance(payload_json["created_at"], str)
+    assert "created_at" in payload_json
+
+    # Verify that the string is an ISO format datetime
+    parsed = json.loads(json_str)
+    assert isinstance(parsed["created_at"], str)

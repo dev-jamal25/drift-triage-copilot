@@ -7,6 +7,7 @@ from agent.app.nodes.action import action_node
 from agent.app.nodes.comms import comms_node
 from agent.app.nodes.supervisor import supervisor_node
 from agent.app.nodes.triage import triage_node
+from agent.app.schemas.state import AgentState
 from langgraph.graph import END, START, StateGraph
 
 log = structlog.get_logger()
@@ -19,7 +20,7 @@ def create_graph() -> StateGraph:
     Topology:
     supervisor -> triage -> supervisor -> action (if MEDIUM/HIGH) -> supervisor -> comms -> END
     """
-    graph = StateGraph(dict)
+    graph = StateGraph(AgentState)
 
     graph.add_node("supervisor", supervisor_node)
     graph.add_node("triage", triage_node)

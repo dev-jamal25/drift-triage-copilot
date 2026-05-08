@@ -1,9 +1,9 @@
 """Comms node: write human-readable summary for HIL inbox."""
 
 import os
-from typing import Any
 
 import structlog
+from agent.app.schemas.state import AgentState
 
 log = structlog.get_logger()
 
@@ -16,7 +16,7 @@ def load_comms_prompt() -> str:
         return f.read()
 
 
-def comms_node(state: dict[str, Any]) -> dict[str, Any]:
+def comms_node(state: AgentState) -> dict:
     """
     Comms node: write human-readable summary of investigation for HIL inbox.
 

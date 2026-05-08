@@ -1,9 +1,9 @@
 """Action node: construct and enqueue QueuedAction for MEDIUM/HIGH severity."""
 
 import hashlib
-from typing import Any
 
 import structlog
+from agent.app.schemas.state import AgentState
 from shared.contracts import ActionType
 
 log = structlog.get_logger()
@@ -20,7 +20,7 @@ def generate_idempotency_key(investigation_id: str, action_type: str, target_ver
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
-def action_node(state: dict[str, Any]) -> dict[str, Any]:
+def action_node(state: AgentState) -> dict:
     """
     Action node: for MEDIUM/HIGH severity, construct and return QueuedAction.
 

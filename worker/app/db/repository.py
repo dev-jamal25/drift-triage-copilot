@@ -40,7 +40,7 @@ class JobsRepository:
                 status="pending",
                 attempt=action.attempt,
                 max_attempts=action.max_attempts,
-                payload=action.model_dump(),
+                payload=action.model_dump(mode="json"),
             )
             # On conflict, do nothing (preserve existing row/status)
             stmt = stmt.on_conflict_do_nothing(index_elements=["idempotency_key"])

@@ -1,9 +1,8 @@
 """Redis queue abstraction for enqueuing actions."""
 
-import os
-
 import redis.asyncio as redis
 import structlog
+from agent.app.core.config import redact_url
 from shared.contracts import QueuedAction
 
 log = structlog.get_logger()
@@ -12,13 +11,13 @@ log = structlog.get_logger()
 class QueueClient:
     """Abstraction for enqueuing actions to the worker queue."""
 
-    def __init__(self, redis_url: str | None = None):
-        self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://redis:6379")
+    def __init__(self, redis_url: str):
+        self.redis_url = redis_url
         self.redis_client: redis.Redis | None = None
 
     async def connect(self) -> None:
         """Connect to Redis."""
-        log.info("queue.connect", redis_url=self.redis_url)
+        log.info("queue.connect", redis_url=redact_url(self.redis_url))
         self.redis_client = await redis.from_url(self.redis_url, decode_responses=True)
 
     async def disconnect(self) -> None:
@@ -66,15 +65,3 @@ class QueueClient:
                 error=str(e),
             )
             raise
-
-
-# Global instance
-_queue_client = None
-
-
-def get_queue_client() -> QueueClient:
-    """Get or create the global queue client."""
-    global _queue_client
-    if _queue_client is None:
-        _queue_client = QueueClient()
-    return _queue_client

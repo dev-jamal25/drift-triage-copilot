@@ -7,15 +7,22 @@ from typing import Annotated
 import structlog
 from agent.app.database import get_session
 from agent.app.graph import create_graph
-from agent.app.models import Investigation
-from agent.app.queue import get_queue_client
-from fastapi import APIRouter, Depends, HTTPException
+from agent.app.models import HilApproval, Investigation
+from agent.app.queue.client import QueueClient
+from fastapi import APIRouter, Depends, HTTPException, Request
 from shared.contracts import DriftEvent, QueuedAction
 from sqlalchemy.ext.asyncio import AsyncSession
 
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
-
 log = structlog.get_logger()
+
+
+async def get_queue_client(request: Request) -> QueueClient:
+    """Get the queue client from app state."""
+    return request.app.state.queue_client
+
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
+QueueClientDep = Annotated[QueueClient, Depends(get_queue_client)]
 
 router = APIRouter()
 
@@ -24,6 +31,7 @@ router = APIRouter()
 async def receive_drift_event(
     event: DriftEvent,
     session: SessionDep,
+    queue_client: QueueClientDep,
 ) -> dict[str, str]:
     """
     Receive drift event webhook from platform.
@@ -77,9 +85,9 @@ async def receive_drift_event(
         # Handle post-graph actions based on final state
         if final_state.get("action_type"):
             # Enqueue the action
-            queue_client = get_queue_client()
             action_type = final_state.get("action_type")
             idempotency_key = final_state.get("idempotency_key")
+            summary = final_state.get("summary", "Drift investigation requires human approval")
 
             queued_action = QueuedAction(
                 idempotency_key=idempotency_key,
@@ -98,6 +106,32 @@ async def receive_drift_event(
                 investigation_id=investigation_id,
                 action_type=action_type,
             )
+
+            # Create HilApproval record for human-in-the-loop
+            approval = HilApproval(
+                investigation_id=investigation_id,
+                model_name=event.model_name,
+                model_uri=f"models/{event.model_name}/{event.model_version}",
+                recommended_action=action_type,
+                summary=summary,
+                status="pending",
+                created_at=datetime.now(UTC),
+            )
+            session.add(approval)
+            try:
+                await session.commit()
+                log.info(
+                    "webhook.drift.approval_created",
+                    investigation_id=investigation_id,
+                    action_type=action_type,
+                )
+            except Exception as e:
+                log.error(
+                    "webhook.drift.approval_error",
+                    investigation_id=investigation_id,
+                    error=str(e),
+                )
+                await session.rollback()
 
     except Exception as e:
         log.error("webhook.drift.graph_error", investigation_id=investigation_id, error=str(e))

@@ -1,13 +1,12 @@
 """Supervisor node: entry point, routing, and stale URI check."""
 
-from typing import Any
-
 import structlog
+from agent.app.schemas.state import AgentState
 
 log = structlog.get_logger()
 
 
-def supervisor_node(state: dict[str, Any]) -> dict[str, Any]:
+def supervisor_node(state: AgentState) -> dict:
     """
     Supervisor node: routes between sub-agents.
 
