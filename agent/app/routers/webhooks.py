@@ -1,7 +1,7 @@
 """Webhooks router: POST /webhooks/drift."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 import structlog
@@ -44,7 +44,7 @@ async def receive_drift_event(
         severity=event.severity,
         status="open",
         thread_id=thread_id,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
     session.add(investigation)
@@ -90,7 +90,7 @@ async def receive_drift_event(
                 payload=event.model_dump(),
                 attempt=0,
                 max_attempts=3,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             await queue_client.enqueue(queued_action)
             log.info(

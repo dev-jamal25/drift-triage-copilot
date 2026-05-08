@@ -9,11 +9,14 @@ from shared.contracts import ActionType
 log = structlog.get_logger()
 
 
-def generate_idempotency_key(
-    investigation_id: str, model_name: str, model_version: str, action_type: str
-) -> str:
-    """Generate deterministic idempotency key."""
-    combined = f"{investigation_id}:{model_name}:{model_version}:{action_type}"
+def generate_idempotency_key(investigation_id: str, action_type: str, target_version: str) -> str:
+    """
+    Generate deterministic idempotency key.
+
+    Format: {investigation_id}:{action_type}:{target_version}
+    Hashed to fixed-length string for database storage.
+    """
+    combined = f"{investigation_id}:{action_type}:{target_version}"
     return hashlib.sha256(combined.encode()).hexdigest()
 
 
@@ -31,16 +34,13 @@ def action_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"action_queued": False, "status": "skipped"}
 
     investigation_id = state.get("investigation_id")
-    model_name = state.get("model_name")
     model_version = state.get("model_version")
 
     # Determine recommended action based on severity
     action_type: ActionType = "retrain" if severity == "HIGH" else "replay_test"
 
     # Generate idempotency key
-    idempotency_key = generate_idempotency_key(
-        investigation_id, model_name, model_version, action_type
-    )
+    idempotency_key = generate_idempotency_key(investigation_id, action_type, model_version)
 
     log.info(
         "action.execute.success",
