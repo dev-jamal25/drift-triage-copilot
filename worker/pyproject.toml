@@ -12,6 +12,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.29.0",
     "redis>=5.2.0",
+    "alembic>=1.14.0",
 ]
 
 [project.optional-dependencies]
@@ -35,3 +36,6 @@ asyncio_mode = "auto"
 # (used from Step 3 onwards). In the worker container the Dockerfile sets
 # PYTHONPATH=/app; this mirrors that for local `uv run pytest`.
 pythonpath = [".", ".."]
+markers = [
+    "requires_docker: integration tests that require docker compose redis + postgres",
+]

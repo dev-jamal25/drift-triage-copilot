@@ -1,4 +1,4 @@
-"""Retry policy + loop integration — Step 5.
+"""Retry policy + loop integration — Step 5 (updated for Step 6).
 
 Two layers of tests:
   - ``RetryPolicy.delay_for_attempt`` — formula and capping.
@@ -16,8 +16,10 @@ from unittest.mock import AsyncMock
 import pytest
 from shared.contracts import QueuedAction
 
+from app.db.repository import JobsRepository
 from app.handlers.base import HandlerResult
 from app.queue.adapter import RedisQueueAdapter
+from app.runtime.idempotency import GuardOutcome, IdempotencyGuard
 from app.runtime.loop import process_message
 from app.runtime.retry_policy import RetryPolicy
 
@@ -84,6 +86,20 @@ def retry_policy() -> RetryPolicy:
     return RetryPolicy(backoff_base_seconds=2.0, retry_max_backoff_seconds=60.0)
 
 
+@pytest.fixture
+def jobs() -> AsyncMock:
+    """Mock JobsRepository."""
+    return AsyncMock(spec=JobsRepository)
+
+
+@pytest.fixture
+def guard() -> AsyncMock:
+    """Mock IdempotencyGuard with PROCEED outcome."""
+    mock = AsyncMock(spec=IdempotencyGuard)
+    mock.acquire.return_value = GuardOutcome.PROCEED
+    return mock
+
+
 def _retryable(error_type: str = "TransientError") -> AsyncMock:
     return AsyncMock(
         return_value=HandlerResult(
@@ -95,14 +111,16 @@ def _retryable(error_type: str = "TransientError") -> AsyncMock:
 
 
 async def test_retryable_failure_first_attempt_nacks_with_bumped_attempt(
-    adapter: AsyncMock, retry_policy: RetryPolicy
+    adapter: AsyncMock, retry_policy: RetryPolicy, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """attempt=0, max_attempts=3 → next_attempt=1 < 3 → nack_retry with
     delay = 2 * 2**0 = 2.0 and a retry_raw whose ``attempt`` field is 1."""
     action = _action(attempt=0)
     raw = _payload_for(action)
 
-    await process_message(adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy)
+    await process_message(
+        adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy, jobs=jobs, guard=guard
+    )
 
     adapter.ack.assert_not_called()
     adapter.dead_letter.assert_not_called()
@@ -120,13 +138,15 @@ async def test_retryable_failure_first_attempt_nacks_with_bumped_attempt(
 
 
 async def test_retryable_failure_second_attempt_uses_bigger_delay(
-    adapter: AsyncMock, retry_policy: RetryPolicy
+    adapter: AsyncMock, retry_policy: RetryPolicy, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """attempt=1 → delay = 2 * 2**1 = 4.0; bumped attempt = 2."""
     action = _action(attempt=1)
     raw = _payload_for(action)
 
-    await process_message(adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy)
+    await process_message(
+        adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy, jobs=jobs, guard=guard
+    )
 
     args, kwargs = adapter.nack_retry.await_args
     assert args[1] == 4.0
@@ -135,7 +155,7 @@ async def test_retryable_failure_second_attempt_uses_bigger_delay(
 
 
 async def test_retryable_failure_at_last_attempt_dlqs_with_max_exhausted(
-    adapter: AsyncMock, retry_policy: RetryPolicy
+    adapter: AsyncMock, retry_policy: RetryPolicy, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """attempt=2, max_attempts=3 → next_attempt=3, NOT < 3 → DLQ
     ``max_attempts_exhausted``. error_type carries the handler's tag."""
@@ -147,6 +167,8 @@ async def test_retryable_failure_at_last_attempt_dlqs_with_max_exhausted(
         raw,
         dispatch_fn=_retryable(error_type="UpstreamTimeout"),
         retry_policy=retry_policy,
+        jobs=jobs,
+        guard=guard,
     )
 
     adapter.ack.assert_not_called()
@@ -160,13 +182,15 @@ async def test_retryable_failure_at_last_attempt_dlqs_with_max_exhausted(
 
 
 async def test_retryable_failure_with_max_attempts_one_dlqs_immediately(
-    adapter: AsyncMock, retry_policy: RetryPolicy
+    adapter: AsyncMock, retry_policy: RetryPolicy, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """``max_attempts=1`` means a single try; the first failure DLQs."""
     action = _action(attempt=0, max_attempts=1)
     raw = _payload_for(action)
 
-    await process_message(adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy)
+    await process_message(
+        adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy, jobs=jobs, guard=guard
+    )
 
     adapter.nack_retry.assert_not_called()
     adapter.dead_letter.assert_awaited_once()
@@ -176,7 +200,7 @@ async def test_retryable_failure_with_max_attempts_one_dlqs_immediately(
 
 
 async def test_retryable_failure_uses_capped_delay_at_high_attempt(
-    adapter: AsyncMock,
+    adapter: AsyncMock, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """A small ``retry_max_backoff_seconds`` caps the geometric
     progression — 2 * 2**3 = 16 → capped at 5."""
@@ -184,21 +208,25 @@ async def test_retryable_failure_uses_capped_delay_at_high_attempt(
     action = _action(attempt=3, max_attempts=10)
     raw = _payload_for(action)
 
-    await process_message(adapter, raw, dispatch_fn=_retryable(), retry_policy=tight_policy)
+    await process_message(
+        adapter, raw, dispatch_fn=_retryable(), retry_policy=tight_policy, jobs=jobs, guard=guard
+    )
 
     args, _ = adapter.nack_retry.await_args
     assert args[1] == 5.0
 
 
 async def test_retryable_then_terminal_paths_do_not_double_handle(
-    adapter: AsyncMock, retry_policy: RetryPolicy
+    adapter: AsyncMock, retry_policy: RetryPolicy, jobs: AsyncMock, guard: AsyncMock
 ) -> None:
     """Sanity: a single retryable_failure produces exactly one nack_retry
     and zero ack/dead_letter calls."""
     action = _action(attempt=0)
     raw = _payload_for(action)
 
-    await process_message(adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy)
+    await process_message(
+        adapter, raw, dispatch_fn=_retryable(), retry_policy=retry_policy, jobs=jobs, guard=guard
+    )
 
     assert adapter.ack.call_count == 0
     assert adapter.dead_letter.call_count == 0

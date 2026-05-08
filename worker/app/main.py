@@ -1,8 +1,8 @@
 """Worker entry point.
 
-Loads settings, configures structlog, opens a Redis client, builds the
-queue adapter, starts the retry scheduler concurrently with the
-claim/dispatch loop, and shuts both down cleanly on SIGINT/SIGTERM.
+Loads settings, configures structlog, opens the database and Redis clients,
+builds the queue adapter, starts the retry scheduler concurrently with the
+claim/dispatch loop, and shuts all down cleanly on SIGINT/SIGTERM.
 """
 
 from __future__ import annotations
@@ -17,8 +17,11 @@ from redis.asyncio import Redis
 
 from app.core.config import WorkerSettings, redact_url
 from app.core.logging import configure_logging
+from app.db.engine import close_engine, open_engine
+from app.db.repository import JobsRepository
 from app.handlers.dispatcher import dispatch
 from app.queue.adapter import RedisQueueAdapter
+from app.runtime.idempotency import IdempotencyGuard
 from app.runtime.loop import run as run_loop
 from app.runtime.retry_policy import RetryPolicy
 from app.runtime.retry_scheduler import RetryScheduler
@@ -58,6 +61,7 @@ async def main() -> None:
     log.info(
         "worker.start",
         log_level=settings.log_level,
+        database_url=redact_url(settings.database_url),
         redis_url=redact_url(settings.redis_url),
         model_service_url=settings.model_service_url,
         max_retries=settings.max_retries,
@@ -74,22 +78,32 @@ async def main() -> None:
         retry_max_backoff_seconds=settings.retry_max_backoff_seconds,
     )
 
-    async with open_redis(settings.redis_url) as redis_client:
-        adapter = RedisQueueAdapter(redis_client)
-        scheduler = RetryScheduler(redis_client)
-        scheduler_task = asyncio.create_task(scheduler.run(shutdown), name="retry_scheduler")
-        try:
-            await run_loop(
-                adapter,
-                shutdown,
-                dispatch_fn=dispatch,
-                retry_policy=retry_policy,
-            )
-        finally:
-            shutdown.set()
-            await scheduler_task
+    # Open database engine
+    engine, session_factory = await open_engine(settings.database_url)
+    jobs = JobsRepository(session_factory)
 
-    log.info("worker.stop")
+    try:
+        async with open_redis(settings.redis_url) as redis_client:
+            adapter = RedisQueueAdapter(redis_client)
+            guard = IdempotencyGuard(redis_client, jobs)
+            scheduler = RetryScheduler(redis_client)
+            scheduler_task = asyncio.create_task(scheduler.run(shutdown), name="retry_scheduler")
+            try:
+                await run_loop(
+                    adapter,
+                    shutdown,
+                    dispatch_fn=dispatch,
+                    retry_policy=retry_policy,
+                    jobs=jobs,
+                    guard=guard,
+                )
+            finally:
+                shutdown.set()
+                await scheduler_task
+
+        log.info("worker.stop")
+    finally:
+        await close_engine(engine)
 
 
 if __name__ == "__main__":

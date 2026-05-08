@@ -63,6 +63,7 @@ services:
       - "8000:8000"
     volumes:
       - ./platform:/app/platform
+      - /app/platform/.venv
       - ./shared:/app/shared
 
   agent:
@@ -87,6 +88,7 @@ services:
       - "8001:8001"
     volumes:
       - ./agent:/app/agent
+      - /app/agent/.venv
       - ./shared:/app/shared
 
   worker:
@@ -107,6 +109,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./worker:/app/worker
+      - /app/worker/.venv
       - ./shared:/app/shared
 
   dashboard:
@@ -124,6 +127,7 @@ services:
       - "8501:8501"
     volumes:
       - ./dashboard:/app/dashboard
+      - /app/dashboard/.venv
       - ./shared:/app/shared
 
 volumes:
