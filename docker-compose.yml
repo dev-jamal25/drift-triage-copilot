@@ -66,6 +66,46 @@ services:
       - ./platform:/app/platform
       -  platform_venv:/app/platform/.venv
       - ./shared:/app/shared
+
+  model-bootstrap:
+    build:
+      context: .
+      dockerfile: platform/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+      platform-migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PLATFORM_MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PLATFORM_LOG_LEVEL: ${LOG_LEVEL}
+      PLATFORM_MODEL_NAME: ${PLATFORM_MODEL_NAME}
+      PLATFORM_MODEL_ALIAS: ${PLATFORM_MODEL_ALIAS}
+    working_dir: /app/platform
+    command: uv run python bootstrap.py
+    volumes:
+      - ./platform:/app/platform
+      - platform_venv:/app/platform/.venv
+      - ./shared:/app/shared
+  worker-migrate:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    working_dir: /app/worker
+    command: uv run alembic upgrade head
+    volumes:
+      - ./worker:/app/worker
+      - worker_venv:/app/worker/.venv
+      - ./shared:/app/shared
+
   model-service:
     build:
       context: .
@@ -76,6 +116,8 @@ services:
       mlflow:
         condition: service_started
       platform-migrate:
+        condition: service_completed_successfully
+      model-bootstrap:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -105,16 +147,21 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_USE_LLM: ${AGENT_USE_LLM}
       LLM_TRIAGE_MODEL: ${LLM_TRIAGE_MODEL}
       LLM_ACTION_MODEL: ${LLM_ACTION_MODEL}
       LLM_COMMS_MODEL: ${LLM_COMMS_MODEL}
+      AGENT_LLM_TIMEOUT_SECONDS: ${AGENT_LLM_TIMEOUT_SECONDS}
       MODEL_SERVICE_URL: ${MODEL_SERVICE_URL}
       LOG_LEVEL: ${LOG_LEVEL}
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
     ports:
       - "8001:8001"
     volumes:
       - ./agent:/app/agent
-      - /app/agent/.venv
+      - agent_venv:/app/agent/.venv
       - ./shared:/app/shared
 
   worker:
@@ -126,6 +173,8 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      worker-migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
@@ -135,7 +184,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
     volumes:
       - ./worker:/app/worker
-      - /app/worker/.venv
+      - worker_venv:/app/worker/.venv
       - ./shared:/app/shared
 
   dashboard:
@@ -153,10 +202,13 @@ services:
       - "8501:8501"
     volumes:
       - ./dashboard:/app/dashboard
-      - /app/dashboard/.venv
+      - dashboard_venv:/app/dashboard/.venv
       - ./shared:/app/shared
 
 volumes:
   postgres_data:
   mlflow_artifacts:
   platform_venv:
+  agent_venv:
+  worker_venv:
+  dashboard_venv:

@@ -65,13 +65,26 @@ class AgentSettings(BaseSettings):
     )
 
     llm_action_model: str = Field(
-        default="claude-haiku-4-5-20251001",
+        default="claude-sonnet-4-6",
         validation_alias=AliasChoices("LLM_ACTION_MODEL", "AGENT_LLM_ACTION_MODEL"),
     )
 
     llm_comms_model: str = Field(
         default="claude-haiku-4-5-20251001",
         validation_alias=AliasChoices("LLM_COMMS_MODEL", "AGENT_LLM_COMMS_MODEL"),
+    )
+
+    use_llm: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("AGENT_USE_LLM"),
+        description="Enable LLM inference; defaults to deterministic fallback",
+    )
+
+    llm_timeout_seconds: float = Field(
+        default=20.0,
+        validation_alias=AliasChoices("AGENT_LLM_TIMEOUT_SECONDS"),
+        gt=0,
+        description="Timeout for LLM API calls in seconds",
     )
 
 

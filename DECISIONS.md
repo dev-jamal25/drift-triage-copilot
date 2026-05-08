@@ -61,3 +61,9 @@ On the marketing-call use case, missing buyers is the dominant cost, so we set a
 
 ## Why "unknown" stays a literal categorical level
 "Unknown" in the UCI bank dataset is itself signal (e.g. self-reported loan status); imputing it with the modal level would erase that. The OneHotEncoder treats it as a normal level, and `tests/test_data.py::test_unknown_preserved_as_category` locks the rule.
+
+## Model bootstrap as a docker-compose service
+On `docker compose up --build`, a one-shot `model-bootstrap` service runs *before* `model-service` starts. It trains the classifier and registers it with MLflow under the alias `staging`. This gives reviewers a clean "clone, copy .env, compose up" flow without manual training steps. The bootstrap is idempotent: if the model@alias already exists, it skips training. **Why:** low-risk since the CSV is already in the working directory (5.7 MB); reviewers never see a "model not found" error. **Alternative rejected:** documenting a manual `uv run python -m ml.train ...` step, which adds friction to first run.
+
+## Agent auto-creates tables; worker uses migrations
+Agent uses SQLAlchemy ORM with `Base.metadata.create_all()` on startup, so no alembic migrations needed there. Worker uses raw SQL tables (`worker_action_jobs`) that require explicit alembic migrations (`worker/alembic/versions/0001_...`), run by a separate `worker-migrate` docker-compose service before worker starts. **Why:** agent is simpler with auto-creation; worker tables are append-only and benefit from explicit schema versioning. Both approaches coexist on the same Postgres instance.

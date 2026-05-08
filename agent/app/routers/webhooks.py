@@ -21,6 +21,11 @@ async def get_queue_client(request: Request) -> QueueClient:
     return request.app.state.queue_client
 
 
+def get_settings(request: Request):
+    """Get the settings from app state."""
+    return request.app.state.settings
+
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 QueueClientDep = Annotated[QueueClient, Depends(get_queue_client)]
 
@@ -32,6 +37,7 @@ async def receive_drift_event(
     event: DriftEvent,
     session: SessionDep,
     queue_client: QueueClientDep,
+    request: Request,
 ) -> dict[str, str]:
     """
     Receive drift event webhook from platform.
@@ -66,16 +72,36 @@ async def receive_drift_event(
     # Initialize graph and run investigation
     graph = create_graph()
 
+    # Get settings from app state for LLM configuration
+    settings = request.app.state.settings
+
     initial_state = {
         "investigation_id": investigation_id,
         "model_name": event.model_name,
         "model_version": event.model_version,
         "drift_event": event.model_dump(),
+        "_settings": settings,  # Pass settings to nodes
     }
 
     try:
-        # Run the graph
-        final_state = graph.invoke(initial_state)
+        # Run the graph with async invoke (required for async nodes)
+        # Pass LangSmith tracing config with run metadata
+        final_state = await graph.ainvoke(
+            initial_state,
+            config={
+                "run_name": "drift-triage-investigation",
+                "tags": ["drift-triage", "agent", event.severity],
+                "metadata": {
+                    "thread_id": thread_id,
+                    "investigation_id": investigation_id,
+                    "event_id": event.event_id,
+                    "model_name": event.model_name,
+                    "model_version": event.model_version,
+                    "severity": event.severity,
+                },
+                "configurable": {"thread_id": thread_id},
+            },
+        )
         log.info(
             "webhook.drift.graph_complete",
             investigation_id=investigation_id,
@@ -84,30 +110,12 @@ async def receive_drift_event(
 
         # Handle post-graph actions based on final state
         if final_state.get("action_type"):
-            # Enqueue the action
             action_type = final_state.get("action_type")
             idempotency_key = final_state.get("idempotency_key")
             summary = final_state.get("summary", "Drift investigation requires human approval")
 
-            queued_action = QueuedAction(
-                idempotency_key=idempotency_key,
-                investigation_id=investigation_id,
-                model_name=event.model_name,
-                action_type=action_type,
-                target_version=event.model_version,
-                payload=event.model_dump(),
-                attempt=0,
-                max_attempts=3,
-                created_at=datetime.now(UTC),
-            )
-            await queue_client.enqueue(queued_action)
-            log.info(
-                "webhook.drift.action_enqueued",
-                investigation_id=investigation_id,
-                action_type=action_type,
-            )
-
             # Create HilApproval record for human-in-the-loop
+            # For replay_test, auto-enqueue; for retrain/rollback, wait for approval.
             approval = HilApproval(
                 investigation_id=investigation_id,
                 model_name=event.model_name,
@@ -132,6 +140,32 @@ async def receive_drift_event(
                     error=str(e),
                 )
                 await session.rollback()
+
+            # Auto-enqueue replay_test; gate retrain/rollback behind approval.
+            if action_type == "replay_test":
+                queued_action = QueuedAction(
+                    idempotency_key=idempotency_key,
+                    investigation_id=investigation_id,
+                    model_name=event.model_name,
+                    action_type=action_type,
+                    target_version=event.model_version,
+                    payload=event.model_dump(),
+                    attempt=0,
+                    max_attempts=3,
+                    created_at=datetime.now(UTC),
+                )
+                await queue_client.enqueue(queued_action)
+                log.info(
+                    "webhook.drift.action_enqueued",
+                    investigation_id=investigation_id,
+                    action_type=action_type,
+                )
+            else:
+                log.info(
+                    "webhook.drift.awaiting_approval",
+                    investigation_id=investigation_id,
+                    action_type=action_type,
+                )
 
     except Exception as e:
         log.error("webhook.drift.graph_error", investigation_id=investigation_id, error=str(e))

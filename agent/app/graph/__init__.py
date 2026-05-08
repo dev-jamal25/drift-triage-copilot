@@ -1,6 +1,6 @@
 """LangGraph supervisor graph definition."""
 
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 from agent.app.nodes.action import action_node
@@ -19,6 +19,8 @@ def create_graph() -> StateGraph:
 
     Topology:
     supervisor -> triage -> supervisor -> action (if MEDIUM/HIGH) -> supervisor -> comms -> END
+
+    Note: triage, action, and comms are async nodes. Use ainvoke() to run the graph.
     """
     graph = StateGraph(AgentState)
 
@@ -29,7 +31,7 @@ def create_graph() -> StateGraph:
 
     graph.add_edge(START, "supervisor")
 
-    def supervisor_route(state: dict[str, Any]) -> str:
+    def supervisor_route(state: dict[str, Any]) -> Literal["triage", "action", "comms", "__end__"]:
         next_node = state.get("next")
         if next_node == "END":
             return END
@@ -41,7 +43,16 @@ def create_graph() -> StateGraph:
             return "comms"
         return END
 
-    graph.add_conditional_edges("supervisor", supervisor_route)
+    graph.add_conditional_edges(
+        "supervisor",
+        supervisor_route,
+        path_map={
+            "triage": "triage",
+            "action": "action",
+            "comms": "comms",
+            "__end__": END,
+        },
+    )
     graph.add_edge("triage", "supervisor")
     graph.add_edge("action", "supervisor")
     graph.add_edge("comms", END)

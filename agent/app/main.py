@@ -6,7 +6,7 @@ import structlog
 from agent.app.core.config import AgentSettings, redact_url
 from agent.app.database import close_db, init_db
 from agent.app.queue.client import QueueClient
-from agent.app.routers import approvals, investigations, webhooks
+from agent.app.routers import approvals, investigations, webhooks, worker_jobs
 from fastapi import FastAPI
 
 log = structlog.get_logger()
@@ -56,6 +56,7 @@ app = FastAPI(
 app.include_router(webhooks.router)
 app.include_router(approvals.router)
 app.include_router(investigations.router)
+app.include_router(worker_jobs.router)
 
 
 @app.get("/healthz")

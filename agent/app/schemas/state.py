@@ -16,6 +16,9 @@ class AgentState(TypedDict, total=False):
     model_version: str
     drift_event: dict[str, Any]
 
+    # Internal settings (for node access)
+    _settings: Any  # AgentSettings instance
+
     # Supervisor routing
     next: str
 
