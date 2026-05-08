@@ -6,7 +6,10 @@
 __pycache__/
 *.py[cod]
 .venv/
+**/.venv/
 venv/
+.venv
+.venv/**
 .python-version
 .uv-cache/
 .idea/
