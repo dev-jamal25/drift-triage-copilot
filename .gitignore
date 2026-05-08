@@ -42,7 +42,6 @@ htmlcov/
 .ruff_cache/
 
 # ML / project artifacts
-mlruns/
 mlartifacts/
 *.pkl
 *.joblib

@@ -23,7 +23,7 @@ See [DECISIONS.md](./DECISIONS.md) for design choices and rationale.
 See [RUNBOOK.md](./RUNBOOK.md) for how to drift the system, approve actions,
 and recover from a stuck investigation.
 
-## Quick start
+## Quick start (full stack)
 
 Prerequisites: Docker, Docker Compose, `uv` (for local dev outside containers).
 
@@ -40,6 +40,30 @@ Services:
 - Agent: http://localhost:8001
 - Dashboard: http://localhost:8501 (Streamlit)
 - MLflow: http://localhost:5000
+
+## Local platform-only workflow (no Docker)
+
+```bash
+cd platform
+uv sync --all-extras
+
+# 1) Train + log to MLflow + register under alias `staging`
+uv run python -m ml.train --data data/raw/bank-additional-full.csv --out data/processed/
+
+# 2) Serve the registered staging model
+uv run uvicorn app.main:app --reload
+# -> http://127.0.0.1:8000/docs   (interactive)
+# -> http://127.0.0.1:8000/readyz (model load status)
+
+# 3) Tests
+uv run pytest -q
+uv run ruff check . && uv run ruff format --check .
+```
+
+`bank-additional-full.csv` is gitignored — fetch it from
+https://archive.ics.uci.edu/dataset/222/bank+marketing and drop it into
+`platform/data/raw/`. See [platform/README.md](./platform/README.md) for
+dataset-prep rules, model bake-off results, threshold rule, and MLflow flow.
 
 ## Project structure
 

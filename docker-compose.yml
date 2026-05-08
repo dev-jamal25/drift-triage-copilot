@@ -28,25 +28,44 @@ services:
 
   mlflow:
     build:
-      context: .
-      dockerfile: mlflow/Dockerfile
+      context: ./mlflow
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       MLFLOW_BACKEND_STORE_URI: ${MLFLOW_BACKEND_STORE_URI}
-      MLFLOW_DEFAULT_ARTIFACT_ROOT: ${MLFLOW_DEFAULT_ARTIFACT_ROOT}
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri ${MLFLOW_BACKEND_STORE_URI}
-      --default-artifact-root ${MLFLOW_DEFAULT_ARTIFACT_ROOT}
+      --serve-artifacts
+      --artifacts-destination /mlflow/artifacts
     volumes:
       - mlflow_artifacts:/mlflow/artifacts
     ports:
       - "5000:5000"
 
+  platform-migrate:
+    build:
+      context: .
+      dockerfile: platform/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PLATFORM_MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PLATFORM_LOG_LEVEL: ${LOG_LEVEL}
+      PLATFORM_MODEL_NAME: ${PLATFORM_MODEL_NAME}
+      PLATFORM_MODEL_ALIAS: ${PLATFORM_MODEL_ALIAS}
+      PLATFORM_LOAD_MODEL_ON_STARTUP: "false"
+    working_dir: /app/platform
+    command: uv run alembic upgrade head
+    volumes:
+      - ./platform:/app/platform
+      -  platform_venv:/app/platform/.venv
+      - ./shared:/app/shared
   model-service:
     build:
       context: .
@@ -56,16 +75,21 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_started
+      platform-migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PLATFORM_MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      PLATFORM_LOG_LEVEL: ${LOG_LEVEL}
+      PLATFORM_MODEL_NAME: ${PLATFORM_MODEL_NAME}
+      PLATFORM_MODEL_ALIAS: ${PLATFORM_MODEL_ALIAS}
+      PLATFORM_LOAD_MODEL_ON_STARTUP: ${PLATFORM_LOAD_MODEL_ON_STARTUP}
       AGENT_WEBHOOK_URL: ${AGENT_WEBHOOK_URL}
-      LOG_LEVEL: ${LOG_LEVEL}
     ports:
       - "8000:8000"
     volumes:
       - ./platform:/app/platform
-      - /app/platform/.venv
+      - platform_venv:/app/platform/.venv
       - ./shared:/app/shared
 
   agent:
@@ -135,3 +159,4 @@ services:
 volumes:
   postgres_data:
   mlflow_artifacts:
+  platform_venv:

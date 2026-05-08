@@ -46,3 +46,18 @@ Superseded approvals are detected at enqueue time by checking for open approvals
 
 ## Manual promotion bypass (when allowed, how audited)
 Yes, allow it. The /promote endpoint accepts two auth modes: an agent-issued approval_token (normal flow) OR an X-Admin-Bypass-Token header (emergency flow). Both paths log to a single promotions_audit table with a source column (agent | manual_bypass) plus the requestor identity. Dashboard surfaces manual bypasses with a yellow banner.
+
+## Where prediction request/response schemas live
+In `platform/app/schemas/prediction.py`, not `shared/contracts.py`. The predict API is the platform service's public boundary, not a cross-service wire contract — putting it in `shared/` would force every PR that adjusts a feature column to be co-signed by the agent track. `shared/contracts.py` stays scoped to DriftEvent, PromotionRequest, QueuedAction, and HilApproval.
+
+## How the prediction threshold reaches the route
+`ml/registry.py` logs `threshold` as an MLflow run param at registration time; `app/services/model_loader.load_bundle` reads it back when resolving the alias at startup. Single source of truth in the registry. Alternative considered: a separate `threshold.json` artifact next to the model — rejected because it duplicates state and invites the two files to drift apart.
+
+## Model registry: aliases, not legacy stages
+MLflow 3 dropped `transition_model_version_stage`. Versions are tagged with lowercase aliases (`staging`/`production`/`archived`) and addressed via `models:/<name>@<alias>`. The shared contract's `PromotionStage = "Staging" | "Production" | "Archived"` is preserved by mapping in `ml/registry.STAGE_TO_ALIAS` — no change needed in `shared/contracts.py`.
+
+## Threshold rule: highest where validation recall ≥ 0.75
+On the marketing-call use case, missing buyers is the dominant cost, so we set a recall floor (0.75) and pick the highest decision threshold that still meets it — that maximises precision under the recall constraint. Alternative considered: maximise F1 directly; rejected because F1 makes precision/recall trade-offs implicit and lets the floor drift unnoticed.
+
+## Why "unknown" stays a literal categorical level
+"Unknown" in the UCI bank dataset is itself signal (e.g. self-reported loan status); imputing it with the modal level would erase that. The OneHotEncoder treats it as a normal level, and `tests/test_data.py::test_unknown_preserved_as_category` locks the rule.

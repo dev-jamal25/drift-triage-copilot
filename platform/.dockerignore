@@ -20,8 +20,15 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-mlruns/
-mlartifacts/
 docker-compose*.yml
 Dockerfile
 .dockerignore
+# Local/generated data and ML artifacts
+data/raw/
+data/processed/
+mlruns/
+mlartifacts/
+*.joblib
+*.pkl
+*.parquet
+*.csv
